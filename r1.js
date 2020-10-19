@@ -1,4 +1,5 @@
 const videoElem = document.getElementById("video");
+const audioElem = document.getElementById("audio");
 const logElem = document.getElementById("log");
 const startElem = document.getElementById("start");
 const stopElem = document.getElementById("stop");
@@ -10,6 +11,15 @@ var displayMediaOptions = {
     cursor: "always",
   },
   audio: false,
+};
+
+var audioMediaOptions = {
+  video: false,
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    sampleRate: 44100,
+  },
 };
 
 // Set event listeners for the start and stop buttons
@@ -47,16 +57,35 @@ async function startCapture() {
       displayMediaOptions
     );
 
-    let options = { mimeType: "video/webm" };
-    mediaRecorder = new MediaRecorder(videoElem.srcObject, options);
+    audioElem.srcObject = await navigator.mediaDevices.getUserMedia(
+      audioMediaOptions
+    );
+
+    let options;
+
+    if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
+      options = { mimeType: "video/webm;codecs=vp9,opus" };
+    } else if (MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")) {
+      options = { mimeType: "video/webm; codecs=vp8,opus" };
+    } else {
+      options = { mimeType: "video/webm;codecs=h264,opus" };
+    }
+
+    mediaRecorder = new MediaRecorder(
+      new MediaStream([
+        ...audioElem.srcObject.getAudioTracks(),
+        ...videoElem.srcObject.getVideoTracks(),
+      ]),
+      options
+    );
     mediaRecorder.ondataavailable = handleDataAvailable;
     mediaRecorder.start();
 
-    // demo: to download after 9sec
+    // to timeout after 1 hour
     setTimeout((event) => {
       console.log("stopping");
       mediaRecorder.stop();
-    }, 9000);
+    }, 3600000);
 
     dumpOptionsInfo();
   } catch (err) {
@@ -65,10 +94,16 @@ async function startCapture() {
 }
 
 function stopCapture(evt) {
-  let tracks = videoElem.srcObject.getTracks();
-
-  tracks.forEach((track) => track.stop());
+  let videoTracks = videoElem.srcObject.getTracks();
+  videoTracks.forEach((track) => track.stop());
   videoElem.srcObject = null;
+
+  let audioTracks = audioElem.srcObject.getTracks();
+  audioTracks.forEach((track) => track.stop());
+  videoElem.srcObject = null;
+
+  logElem.innerHTML = ``;
+  recordedChunks = [];
 }
 
 function dumpOptionsInfo() {
@@ -84,7 +119,6 @@ function handleDataAvailable(event) {
   console.log("data-available");
   if (event.data.size > 0) {
     recordedChunks.push(event.data);
-    console.log(recordedChunks);
     download();
   } else {
     // ...
